@@ -194,7 +194,7 @@ def api_req(service, api_endpoint, access_token, *mehs, **kw):
             if DEBUG:
                 print(e)
             print('[-] API request error, retrying')
-            time.sleep(1)
+            time.sleep(3)
             continue
 
 
@@ -408,8 +408,6 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
             dx, dy = -dy, dx
         x, y = x+dx, y+dy
         steps +=1
-
-        time.sleep(2)
 
         print('[+] Scan: %0.1f %%' % (((steps + (pos * .25) - .25) / steplimit**2) * 100))
 
