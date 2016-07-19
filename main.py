@@ -66,6 +66,8 @@ NUM_STEPS = 5
 DATA_FILE = 'data.json'
 DATA = []
 
+HEARTBEATSTEP = 0
+
 
 def f2i(float):
   return struct.unpack('<Q', struct.pack('<d', float))[0]
@@ -325,6 +327,9 @@ def heartbeat(service, api_endpoint, access_token, response):
                 print(e)
             print('[-] Heartbeat missed, retrying')
 
+            global HEARTBEATSTEP
+            HEARTBEATSTEP += 1
+
 
 def scan(service, api_endpoint, access_token, response, origin, pokemons):
     steps = 0
@@ -403,6 +408,8 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
             dx, dy = -dy, dx
         x, y = x+dx, y+dy
         steps +=1
+
+        time.sleep(2)
 
         print('[+] Scan: %0.1f %%' % (((steps + (pos * .25) - .25) / steplimit**2) * 100))
 
@@ -488,7 +495,54 @@ def main():
 
     while True:
         try:
-            scan(args.auth_service, api_endpoint, access_token, response, origin, pokemons)
+            global HEARTBEATSTEP
+            if HEARTBEATSTEP == 0:
+                scan(args.auth_service, api_endpoint, access_token, response, origin, pokemons)
+            else:
+                if HEARTBEATSTEP == 5:
+                    set_location(args.location)
+
+                    if args.auth_service == 'ptc':
+                        access_token = login_ptc(args.username, args.password)
+                    else:
+                        access_token = login_google(args.username, args.password)
+
+                    if access_token is None:
+                        print('[-] Error logging in: possible wrong username/password')
+                        return
+                    print('[+] RPC Session Token: {} ...'.format(access_token))
+
+                    api_endpoint = get_api_endpoint(args.auth_service, access_token)
+                    if api_endpoint is None:
+                        print('[-] RPC server offline')
+                        return
+                    print('[+] Received API endpoint: {}'.format(api_endpoint))
+
+                    response = get_profile(args.auth_service, access_token, api_endpoint, None)
+                    if response is not None:
+                        print('[+] Login successful')
+
+                        payload = response.payload[0]
+                        profile = pokemon_pb2.ResponseEnvelop.ProfilePayload()
+                        profile.ParseFromString(payload)
+                        print('[+] Username: {}'.format(profile.profile.username))
+
+                        creation_time = datetime.fromtimestamp(int(profile.profile.creation_time) / 1000)
+                        print('[+] You are playing Pokemon Go since: {}'.format(
+                            creation_time.strftime('%Y-%m-%d %H:%M:%S'),
+                        ))
+
+                        for curr in profile.profile.currency:
+                            print('[+] {}: {}'.format(curr.type, curr.amount))
+                    else:
+                        print('[-] Response problem')
+                        return
+
+                    origin = LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)
+
+                    HEARTBEATSTEP = 0
+                else:
+                    HEARTBEATSTEP += 1
         except Exception, e:
             pass
 
