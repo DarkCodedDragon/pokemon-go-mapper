@@ -65,29 +65,36 @@ NUM_STEPS = 5
 DATA_FILE = 'data.json'
 DATA = []
 
+
 def f2i(float):
   return struct.unpack('<Q', struct.pack('<d', float))[0]
+
 
 def f2h(float):
   return hex(struct.unpack('<Q', struct.pack('<d', float))[0])
 
+
 def h2f(hex):
   return struct.unpack('<d', struct.pack('<Q', int(hex,16)))[0]
+
 
 def prune():
     # prune despawned pokemon
     cur_time = int(time.time())
     for i, poke in reversed(list(enumerate(DATA))):
-        poke['timeleft'] = poke['timeleft'] - (cur_time - poke['timestamp'])
-        poke['timestamp'] = cur_time
-        if poke['timeleft'] <= 0:
-            DATA.pop(i)
+        if poke['type'].lower() == 'pokemon':
+            poke['timeleft'] = poke['timeleft'] - (cur_time - poke['timestamp'])
+            poke['timestamp'] = cur_time
+            if poke['timeleft'] <= 0:
+                DATA.pop(i)
+
 
 def write_data_to_file():
     prune()
 
     with open(DATA_FILE, 'w') as f:
         json.dump(DATA, f, indent=2)
+
 
 def add_pokemon(pokeId, name, lat, lng, timestamp, timeleft):
     DATA.append({
@@ -96,8 +103,19 @@ def add_pokemon(pokeId, name, lat, lng, timestamp, timeleft):
         'lat': lat,
         'lng': lng,
         'timestamp': timestamp,
-        'timeleft': timeleft
-    });
+        'timeleft': timeleft,
+        'type': 'pokemon'
+    })
+
+
+def add_pokestop(lat, lng):
+    DATA.append({
+        'id': 'Pokestop',
+        'lat': lat,
+        'lng': lng,
+        'type': 'pokestop'
+    })
+
 
 def set_location(location_name):
     geolocator = GoogleV3()
@@ -318,21 +336,32 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
         h = heartbeat(service, api_endpoint, access_token, response)
         hs = [h]
         seen = set([])
+        seen_pokestops = set([])
         for child in parent.children():
             latlng = LatLng.from_point(Cell(child).get_center())
             set_location_coords(latlng.lat().degrees, latlng.lng().degrees, 0)
             hs.append(heartbeat(service, api_endpoint, access_token, response))
         set_location_coords(original_lat, original_long, 0)
 
-        visible = []
+        visible_pokemons = []
+        visible_pokestop = []
 
         for hh in hs:
             for cell in hh.cells:
                 for wild in cell.WildPokemon:
                     hash = wild.SpawnPointId + ':' + str(wild.pokemon.PokemonId)
-                    if (hash not in seen):
-                        visible.append(wild)
+                    if hash not in seen:
+                        visible_pokemons.append(wild)
                         seen.add(hash)
+                if cell.Fort:
+                    for Fort in cell.Fort:
+                        if Fort.Enabled:
+                            #if Fort.GymPoints:
+                                # gyms.append([Fort.Team, Fort.Latitude, Fort.Longitude])
+                            if Fort.FortType:
+                                if Fort.FortId not in seen_pokestops:
+                                    visible_pokestop.append(Fort)
+                                    seen_pokestops.add(Fort.FortId)
 
         for cell in h.cells:
             if cell.NearbyPokemon:
@@ -346,7 +375,7 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
                 for poke in cell.NearbyPokemon:
                         print('    (%s) %s' % (poke.PokedexNumber, pokemons[poke.PokedexNumber - 1]['Name']))
 
-        for poke in visible:
+        for poke in visible_pokemons:
             other = LatLng.from_degrees(poke.Latitude, poke.Longitude)
             diff = other - origin
             # print(diff)
@@ -355,6 +384,9 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
 
             timestamp = int(time.time())
             add_pokemon(poke.pokemon.PokemonId, pokemons[poke.pokemon.PokemonId - 1]['Name'], poke.Latitude, poke.Longitude, timestamp, poke.TimeTillHiddenMs / 1000)
+
+        for pokestop in visible_pokestop:
+            add_pokestop(pokestop.Latitude, pokestop.Longitude)
 
         write_data_to_file()
 
@@ -451,8 +483,7 @@ def main():
         try:
             scan(args.auth_service, api_endpoint, access_token, response, origin, pokemons)
         except Exception, e:
-            print('[X] There was an exception: {}' . format(e))
-            continue
+            pass
 
 
 
