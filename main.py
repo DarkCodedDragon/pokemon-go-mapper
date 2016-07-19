@@ -11,11 +11,12 @@ from geopy.geocoders import GoogleV3
 from google.protobuf.internal import encoder
 from gpsoauth import perform_master_login, perform_oauth
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from s2sphere import *
 
 import pokemon_pb2
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-from s2sphere import *
+
 
 def encode(cellid):
     output = []
@@ -23,7 +24,7 @@ def encode(cellid):
     return ''.join(output)
 
 
-def getNeighbors():
+def get_neighbors():
     origin = CellId.from_lat_lng(LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)).parent(15)
     walk = [origin.id()]
     # 10 before and 10 after
@@ -130,6 +131,7 @@ def set_location(location_name):
 
     set_location_coords(loc.latitude, loc.longitude, loc.altitude)
 
+
 def set_location_coords(lat, long, alt):
     global COORDS_LATITUDE, COORDS_LONGITUDE, COORDS_ALTITUDE
     global FLOAT_LAT, FLOAT_LONG
@@ -139,8 +141,10 @@ def set_location_coords(lat, long, alt):
     COORDS_LONGITUDE = f2i(long) # 0xc05e8aae40000000 #f2i(long)
     COORDS_ALTITUDE = f2i(alt)
 
+
 def get_location_coords():
-    return (COORDS_LATITUDE, COORDS_LONGITUDE, COORDS_ALTITUDE)
+    return COORDS_LATITUDE, COORDS_LONGITUDE, COORDS_ALTITUDE
+
 
 def api_req(service, api_endpoint, access_token, *mehs, **kw):
     while True:
@@ -191,6 +195,7 @@ def api_req(service, api_endpoint, access_token, *mehs, **kw):
             time.sleep(1)
             continue
 
+
 def get_profile(service, access_token, api, useauth, *reqq):
     req = pokemon_pb2.RequestEnvelop()
 
@@ -225,7 +230,7 @@ def get_profile(service, access_token, api, useauth, *reqq):
 def get_api_endpoint(service, access_token, api = API_URL):
     p_ret = get_profile(service, access_token, api, None)
     try:
-        return ('https://%s/rpc' % p_ret.api_url)
+        return 'https://%s/rpc' % p_ret.api_url
     except:
         return None
 
@@ -267,6 +272,7 @@ def login_ptc(username, password):
         'grant_type': 'refresh_token',
         'code': ticket,
     }
+
     r2 = SESSION.post(LOGIN_OAUTH, data=data1)
     access_token = re.sub('&expires.*', '', r2.content)
     access_token = re.sub('.*access_token=', '', access_token)
@@ -283,7 +289,7 @@ def raw_heartbeat(service, api_endpoint, access_token, response):
     m.bytes = "05daf51635c82611d1aac95c0b051d3ec088a930"
     m5.message = m.SerializeToString()
 
-    walk = sorted(getNeighbors())
+    walk = sorted(get_neighbors())
 
     m1 = pokemon_pb2.RequestEnvelop.Requests()
     m1.type = 106
@@ -324,10 +330,10 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
     steps = 0
     steplimit = NUM_STEPS
     pos = 1
-    x   = 0
-    y   = 0
-    dx  = 0
-    dy  = -1
+    x = 0
+    y = 0
+    dx = 0
+    dy = -1
     while steps < steplimit**2:
         original_lat = FLOAT_LAT
         original_long = FLOAT_LONG
@@ -356,8 +362,8 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
                 if cell.Fort:
                     for Fort in cell.Fort:
                         if Fort.Enabled:
-                            #if Fort.GymPoints:
-                                # gyms.append([Fort.Team, Fort.Latitude, Fort.Longitude])
+                            # if Fort.GymPoints:
+                            #     gyms.append([Fort.Team, Fort.Latitude, Fort.Longitude])
                             if Fort.FortType:
                                 if Fort.FortId not in seen_pokestops:
                                     visible_pokestop.append(Fort)
@@ -383,7 +389,8 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
             difflng = diff.lng().degrees
 
             timestamp = int(time.time())
-            add_pokemon(poke.pokemon.PokemonId, pokemons[poke.pokemon.PokemonId - 1]['Name'], poke.Latitude, poke.Longitude, timestamp, poke.TimeTillHiddenMs / 1000)
+            add_pokemon(poke.pokemon.PokemonId, pokemons[poke.pokemon.PokemonId - 1]['Name'], poke.Latitude, 
+                        poke.Longitude, timestamp, poke.TimeTillHiddenMs / 1000)
 
         for pokestop in visible_pokestop:
             add_pokestop(pokestop.Latitude, pokestop.Longitude)
@@ -398,6 +405,7 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
         steps +=1
 
         print('[+] Scan: %0.1f %%' % (((steps + (pos * .25) - .25) / steplimit**2) * 100))
+
 
 def main():
     write_data_to_file()
@@ -417,7 +425,6 @@ def main():
     parser.add_argument("-p", "--password", help="PTC Password", required=required("password"))
     parser.add_argument("-l", "--location", help="Location", required=required("location"))
     parser.add_argument("-s", "--step", help="Steps")
-    parser.set_defaults(STEP=5)
     parser.add_argument("-d", "--debug", help="Debug Mode", action='store_true')
     parser.set_defaults(DEBUG=False)
     args = parser.parse_args()
@@ -475,7 +482,7 @@ def main():
         for curr in profile.profile.currency:
             print('[+] {}: {}'.format(curr.type, curr.amount))
     else:
-        print('[-] Ooops...')
+        print('[-] Response problem')
 
     origin = LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)
 
@@ -484,7 +491,6 @@ def main():
             scan(args.auth_service, api_endpoint, access_token, response, origin, pokemons)
         except Exception, e:
             pass
-
 
 
 if __name__ == '__main__':
