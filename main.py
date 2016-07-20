@@ -44,7 +44,7 @@ LOGIN_URL = "https://sso.pokemon.com/sso/login?" \
 LOGIN_OAUTH = 'https://sso.pokemon.com/sso/oauth2.0/accessToken'
 
 ANDROID_ID = '9774d56d682e549c'
-SERVICE= 'audience:server:client_id:848232511240-7so421jotr2609rmqakceuu1luuq0ptb.apps.googleusercontent.com'
+SERVICE = 'audience:server:client_id:848232511240-7so421jotr2609rmqakceuu1luuq0ptb.apps.googleusercontent.com'
 APP = 'com.nianticlabs.pokemongo'
 CLIENT_SIG = '321187995bc7cdc2b5fc91b11a96e2baa8602c62'
 
@@ -67,18 +67,22 @@ DATA_FILE = 'data.json'
 DATA = []
 
 HEARTBEATSTEP = 0
+API_ENDPOINT = ''
+ACCESS_TOKEN = ''
+RESPONSE = ''
+ORIGIN = ''
 
 
 def f2i(float):
-  return struct.unpack('<Q', struct.pack('<d', float))[0]
+    return struct.unpack('<Q', struct.pack('<d', float))[0]
 
 
 def f2h(float):
-  return hex(struct.unpack('<Q', struct.pack('<d', float))[0])
+    return hex(struct.unpack('<Q', struct.pack('<d', float))[0])
 
 
 def h2f(hex):
-  return struct.unpack('<d', struct.pack('<Q', int(hex,16)))[0]
+    return struct.unpack('<d', struct.pack('<Q', int(hex, 16)))[0]
 
 
 def prune():
@@ -100,24 +104,41 @@ def write_data_to_file():
 
 
 def add_pokemon(pokeId, name, lat, lng, timestamp, timeleft):
-    DATA.append({
-        'id': pokeId,
-        'name': name,
-        'lat': lat,
-        'lng': lng,
-        'timestamp': timestamp,
-        'timeleft': timeleft,
-        'type': 'pokemon'
-    })
+    new_poke = True
+
+    for data_cell in DATA:
+        if data_cell['lat'] == lat and data_cell['lng'] == lng and data_cell['id'] == pokeId \
+                and data_cell['type'] == 'pokemon':
+            new_poke = False
+            break
+
+    if new_poke:
+        DATA.append({
+            'id': pokeId,
+            'name': name,
+            'lat': lat,
+            'lng': lng,
+            'timestamp': timestamp,
+            'timeleft': timeleft,
+            'type': 'pokemon'
+        })
 
 
 def add_pokestop(lat, lng):
-    DATA.append({
-        'id': 'Pokestop',
-        'lat': lat,
-        'lng': lng,
-        'type': 'pokestop'
-    })
+    new_stop = True
+
+    for data_cell in DATA:
+        if data_cell['lat'] == lat and data_cell['lng'] == lng and data_cell['type'] == 'pokestop':
+            new_stop = False
+            break
+
+    if new_stop:
+        DATA.append({
+            'id': 'Pokestop',
+            'lat': lat,
+            'lng': lng,
+            'type': 'pokestop'
+        })
 
 
 def set_location(location_name):
@@ -139,8 +160,8 @@ def set_location_coords(lat, long, alt):
     global FLOAT_LAT, FLOAT_LONG
     FLOAT_LAT = lat
     FLOAT_LONG = long
-    COORDS_LATITUDE = f2i(lat) # 0x4042bd7c00000000 # f2i(lat)
-    COORDS_LONGITUDE = f2i(long) # 0xc05e8aae40000000 #f2i(long)
+    COORDS_LATITUDE = f2i(lat)  # 0x4042bd7c00000000 # f2i(lat)
+    COORDS_LONGITUDE = f2i(long)  # 0xc05e8aae40000000 #f2i(long)
     COORDS_ALTITUDE = f2i(alt)
 
 
@@ -152,7 +173,7 @@ def api_req(service, api_endpoint, access_token, *mehs, **kw):
     while True:
         try:
             p_req = pokemon_pb2.RequestEnvelop()
-            p_req.rpc_id = 1469378659230941192
+            p_req.rpc_id = 2508056722472460033
 
             p_req.unknown1 = 2
 
@@ -226,10 +247,10 @@ def get_profile(service, access_token, api, useauth, *reqq):
     if len(reqq) >= 5:
         req5.MergeFrom(reqq[4])
 
-    return api_req(service, api, access_token, req, useauth = useauth)
+    return api_req(service, api, access_token, req, useauth=useauth)
 
 
-def get_api_endpoint(service, access_token, api = API_URL):
+def get_api_endpoint(service, access_token, api=API_URL):
     p_ret = get_profile(service, access_token, api, None)
     try:
         return 'https://%s/rpc' % p_ret.api_url
@@ -301,16 +322,8 @@ def raw_heartbeat(service, api_endpoint, access_token, response):
     m.lat = COORDS_LATITUDE
     m.long = COORDS_LONGITUDE
     m1.message = m.SerializeToString()
-    response = get_profile(
-        service,
-        access_token,
-        api_endpoint,
-        response.unknown7,
-        m1,
-        pokemon_pb2.RequestEnvelop.Requests(),
-        m4,
-        pokemon_pb2.RequestEnvelop.Requests(),
-        m5)
+    response = get_profile(service, access_token, api_endpoint, response.unknown7, m1,
+                           pokemon_pb2.RequestEnvelop.Requests(), m4, pokemon_pb2.RequestEnvelop.Requests(),  m5)
     payload = response.payload[0]
     heartbeat = pokemon_pb2.ResponseEnvelop.HeartbeatPayload()
     heartbeat.ParseFromString(payload)
@@ -330,6 +343,9 @@ def heartbeat(service, api_endpoint, access_token, response):
             global HEARTBEATSTEP
             HEARTBEATSTEP += 1
 
+            if HEARTBEATSTEP >= 5:
+                return None
+
 
 def scan(service, api_endpoint, access_token, response, origin, pokemons):
     steps = 0
@@ -339,15 +355,17 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
     y = 0
     dx = 0
     dy = -1
-    while steps < steplimit**2:
+    while steps < steplimit ** 2:
         original_lat = FLOAT_LAT
         original_long = FLOAT_LONG
         parent = CellId.from_lat_lng(LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)).parent(15)
 
         h = heartbeat(service, api_endpoint, access_token, response)
+        
+        if h is None:
+            break
+        
         hs = [h]
-        seen = set([])
-        seen_pokestops = set([])
         for child in parent.children():
             latlng = LatLng.from_point(Cell(child).get_center())
             set_location_coords(latlng.lat().degrees, latlng.lng().degrees, 0)
@@ -355,24 +373,18 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
         set_location_coords(original_lat, original_long, 0)
 
         visible_pokemons = []
-        visible_pokestop = []
 
         for hh in hs:
             for cell in hh.cells:
                 for wild in cell.WildPokemon:
-                    hash = wild.SpawnPointId + ':' + str(wild.pokemon.PokemonId)
-                    if hash not in seen:
-                        visible_pokemons.append(wild)
-                        seen.add(hash)
+                    visible_pokemons.append(wild)
                 if cell.Fort:
                     for Fort in cell.Fort:
                         if Fort.Enabled:
                             # if Fort.GymPoints:
                             #     gyms.append([Fort.Team, Fort.Latitude, Fort.Longitude])
-                            if Fort.FortType:
-                                if Fort.FortId not in seen_pokestops:
-                                    visible_pokestop.append(Fort)
-                                    seen_pokestops.add(Fort.FortId)
+                            if Fort.FortType == 1:
+                                add_pokestop(Fort.Latitude, Fort.Longitude)
 
         for cell in h.cells:
             if cell.NearbyPokemon:
@@ -384,7 +396,7 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
                 if len(cell.NearbyPokemon) > 0:
                     print('[+] Found pokemon!')
                 for poke in cell.NearbyPokemon:
-                        print('    (%s) %s' % (poke.PokedexNumber, pokemons[poke.PokedexNumber - 1]['Name']))
+                    print('    (%s) %s' % (poke.PokedexNumber, pokemons[poke.PokedexNumber - 1]['Name']))
 
         for poke in visible_pokemons:
             other = LatLng.from_degrees(poke.Latitude, poke.Longitude)
@@ -394,22 +406,19 @@ def scan(service, api_endpoint, access_token, response, origin, pokemons):
             difflng = diff.lng().degrees
 
             timestamp = int(time.time())
-            add_pokemon(poke.pokemon.PokemonId, pokemons[poke.pokemon.PokemonId - 1]['Name'], poke.Latitude, 
+            add_pokemon(poke.pokemon.PokemonId, pokemons[poke.pokemon.PokemonId - 1]['Name'], poke.Latitude,
                         poke.Longitude, timestamp, poke.TimeTillHiddenMs / 1000)
-
-        for pokestop in visible_pokestop:
-            add_pokestop(pokestop.Latitude, pokestop.Longitude)
 
         write_data_to_file()
 
-        if (-steplimit/2 < x <= steplimit/2) and (-steplimit/2 < y <= steplimit/2):
-            set_location_coords((x * 0.0025) + deflat, (y * 0.0025 ) + deflng, 0)
-        if x == y or (x < 0 and x == -y) or (x > 0 and x == 1-y):
+        if (-steplimit / 2 < x <= steplimit / 2) and (-steplimit / 2 < y <= steplimit / 2):
+            set_location_coords((x * 0.0025) + deflat, (y * 0.0025) + deflng, 0)
+        if x == y or (x < 0 and x == -y) or (x > 0 and x == 1 - y):
             dx, dy = -dy, dx
-        x, y = x+dx, y+dy
-        steps +=1
+        x, y = x + dx, y + dy
+        steps += 1
 
-        print('[+] Scan: %0.1f %%' % (((steps + (pos * .25) - .25) / steplimit**2) * 100))
+        print('[+] Scan: %0.1f %%' % (((steps + (pos * .25) - .25) / steplimit ** 2) * 100))
 
 
 def main():
@@ -450,7 +459,7 @@ def main():
         except ValueError:
             print('[!] Invalid amount of steps, this needs to be a number')
             return
-        print('[!] Amount of steps {}' . format(NUM_STEPS))
+        print('[!] Amount of steps {}'.format(NUM_STEPS))
 
     set_location(args.location)
 
@@ -479,7 +488,7 @@ def main():
         profile.ParseFromString(payload)
         print('[+] Username: {}'.format(profile.profile.username))
 
-        creation_time = datetime.fromtimestamp(int(profile.profile.creation_time)/1000)
+        creation_time = datetime.fromtimestamp(int(profile.profile.creation_time) / 1000)
         print('[+] You are playing Pokemon Go since: {}'.format(
             creation_time.strftime('%Y-%m-%d %H:%M:%S'),
         ))
@@ -489,58 +498,66 @@ def main():
     else:
         print('[-] Response problem')
 
-    origin = LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)
+    originloc = LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)
+
+    global API_ENDPOINT, ACCESS_TOKEN, RESPONSE, ORIGIN
+    API_ENDPOINT = api_endpoint
+    ACCESS_TOKEN = access_token
+    RESPONSE = response
+    ORIGIN = originloc
+
 
     while True:
         try:
             global HEARTBEATSTEP
-            if HEARTBEATSTEP == 0:
-                scan(args.auth_service, api_endpoint, access_token, response, origin, pokemons)
-            else:
-                if HEARTBEATSTEP == 5:
-                    set_location(args.location)
+            if HEARTBEATSTEP >= 5:
+                set_location(args.location)
 
-                    if args.auth_service == 'ptc':
-                        access_token = login_ptc(args.username, args.password)
-                    else:
-                        access_token = login_google(args.username, args.password)
+                if args.auth_service == 'ptc':
+                    access_token = login_ptc(args.username, args.password)
+                else:
+                    access_token = login_google(args.username, args.password)
 
-                    if access_token is None:
-                        print('[-] Error logging in: possible wrong username/password')
-                        return
+                if access_token is None:
+                    print('[-] Error logging in: possible wrong username/password')
+                else:
                     print('[+] RPC Session Token: {} ...'.format(access_token))
 
                     api_endpoint = get_api_endpoint(args.auth_service, access_token)
                     if api_endpoint is None:
                         print('[-] RPC server offline')
-                        return
-                    print('[+] Received API endpoint: {}'.format(api_endpoint))
-
-                    response = get_profile(args.auth_service, access_token, api_endpoint, None)
-                    if response is not None:
-                        print('[+] Login successful')
-
-                        payload = response.payload[0]
-                        profile = pokemon_pb2.ResponseEnvelop.ProfilePayload()
-                        profile.ParseFromString(payload)
-                        print('[+] Username: {}'.format(profile.profile.username))
-
-                        creation_time = datetime.fromtimestamp(int(profile.profile.creation_time) / 1000)
-                        print('[+] You are playing Pokemon Go since: {}'.format(
-                            creation_time.strftime('%Y-%m-%d %H:%M:%S'),
-                        ))
-
-                        for curr in profile.profile.currency:
-                            print('[+] {}: {}'.format(curr.type, curr.amount))
                     else:
-                        print('[-] Response problem')
-                        return
+                        print('[+] Received API endpoint: {}'.format(api_endpoint))
 
-                    origin = LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)
+                        response = get_profile(args.auth_service, access_token, api_endpoint, None)
+                        if response is not None:
+                            print('[+] Login successful')
 
-                    HEARTBEATSTEP = 0
-                else:
-                    HEARTBEATSTEP += 1
+                            payload = response.payload[0]
+                            profile = pokemon_pb2.ResponseEnvelop.ProfilePayload()
+                            profile.ParseFromString(payload)
+                            print('[+] Username: {}'.format(profile.profile.username))
+
+                            creation_time = datetime.fromtimestamp(int(profile.profile.creation_time) / 1000)
+                            print('[+] You are playing Pokemon Go since: {}'.format(
+                                creation_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            ))
+
+                            for curr in profile.profile.currency:
+                                print('[+] {}: {}'.format(curr.type, curr.amount))
+
+                            originloc = LatLng.from_degrees(FLOAT_LAT, FLOAT_LONG)
+
+                            API_ENDPOINT = api_endpoint
+                            ACCESS_TOKEN = access_token
+                            RESPONSE = response
+                            ORIGIN = originloc
+
+                            HEARTBEATSTEP = 0
+                        else:
+                            print('[-] Response problem')
+            else:
+                scan(args.auth_service, API_ENDPOINT, ACCESS_TOKEN, RESPONSE, ORIGIN, pokemons)
         except Exception, e:
             pass
 
